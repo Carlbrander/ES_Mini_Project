@@ -16,7 +16,12 @@
 int32_t mic_buffer[INPUT_SIZE] = {0};
 
 
-//void Get_microphone_data(DFSDM_Filter_HandleTypeDef hdfsdm1_filter0);
+
+
+// === Function prototypes ===
+void Find_maximum_frequency(arm_rfft_fast_instance_f32 *S);
+void Get_microphone_data(DFSDM_Filter_HandleTypeDef *hdfsdm1_filter0);
+
 
 
 
@@ -29,9 +34,6 @@ void task(void) {
   arm_rfft_fast_instance_f32 S;
   arm_rfft_fast_init_f32(&S, INPUT_SIZE);
   
-
-  kiss_fftr_cfg cfg = kiss_fftr_alloc(INPUT_SIZE, 0, 0, 0);
-
   // Enable the DWT cycle counter:
   CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
   DWT->CYCCNT = 0;
@@ -40,74 +42,37 @@ void task(void) {
   while (1) {
 
     printf("\r\n\r\n\r\n\r\n\r\n\r\n");
+
+    // Read 1 second of audio data from the microphone
     
     // === Read data from the microphone and store it in the 'mic_buffer' array: ===
     Get_microphone_data(&hdfsdm1_filter0);
+
+
+    // Do FFT of the microphone data
+
+
+
     // === Find dominant frequency using CMSIS DSP: =============================
-    Find_maximum_frequency(S);
+    Find_maximum_frequency(&S);
 
-    
-    // === Find dominant frequency using KISS DSP: =============================
-
-    // Re-copy buffer since CMSIS modifies the input buffer during computation:
-    kiss_fft_cpx FFT_KISS_Buffer[(INPUT_SIZE / 2) + 1] = {0};
-    for (int i = 0; i < INPUT_SIZE; i++) {
-      IN_Buffer[i] = (float)mic_buffer[i];
-    }
-
-    // Hold on to DWT timer value when the KISS RFFT was started:
-    uint32_t kiss_fft_start = DWT->CYCCNT; 
-
-    // Perform DFT:
-    kiss_fftr(cfg, IN_Buffer, FFT_KISS_Buffer);
-
-    // Grab DWT timer value after the KISS RFFT finished:
-    uint32_t kiss_fft_stop = DWT->CYCCNT; 
-
-    // Calculate the number of DWT cycles the KISS RFFT took:
-    uint32_t duration_kiss = kiss_fft_stop - kiss_fft_start; 
-
-    // Calculate the magnitude of each value:
-    for (int i = 0; i < (INPUT_SIZE / 2) + 1; i++) {
-      kiss_fft_cpx val = FFT_KISS_Buffer[i];
-      FFT_KISS_Buffer[i].r = sqrt(val.i * val.i + val.r * val.r);
-      FFT_KISS_Buffer[i].i = 0;
-    }
-
-    // Find the largest, skipping DC offset
-    uint32_t maxindex_kiss = 1;
-    float maxval_kiss = FFT_KISS_Buffer[1].r;
-    for (int i = 2; i < (INPUT_SIZE / 2) + 1; i++) {
-      if (FFT_KISS_Buffer[i].r > maxval_kiss) {
-        maxval_kiss = FFT_KISS_Buffer[i].r;
-        maxindex_kiss = i;
-      }
-    }
-
-    // Convert index to a frequency:
-    int f_max_kiss = (int)(maxindex_kiss)*res;
-
-    printf("Frequency [KISS]:  %10i     Hz\r\n", f_max_kiss);
-    printf("Duration  [KISS]:  %10" PRIu32 " Cycles\r\n", duration_kiss);
 
     HAL_Delay(2000);
   }
 }
-
-
 
 //Read data from the microphone and store it in the 'mic_buffer' array.
 void Get_microphone_data(DFSDM_Filter_HandleTypeDef *hdfsdm1_filter0) {
   // ==== Acquire microphone data: ===========================================
 
   mic_dma_finished_flag = 0;
-  if (HAL_DFSDM_FilterRegularStart_DMA(&hdfsdm1_filter0, mic_buffer, INPUT_SIZE) != HAL_OK) {
+  if (HAL_DFSDM_FilterRegularStart_DMA(hdfsdm1_filter0, mic_buffer, INPUT_SIZE) != HAL_OK) {
     printf("Failed to start DFSDM!\r\n");
     Error_Handler();
   }
   while (!mic_dma_finished_flag) {
   }
-  if (HAL_DFSDM_FilterRegularStop_DMA(&hdfsdm1_filter0) != HAL_OK) {
+  if (HAL_DFSDM_FilterRegularStop_DMA(hdfsdm1_filter0) != HAL_OK) {
     printf("Failed to start DFSDM!\r\n");
     Error_Handler();
   }
@@ -115,7 +80,7 @@ void Get_microphone_data(DFSDM_Filter_HandleTypeDef *hdfsdm1_filter0) {
 }
 
 
-void Find_maximum_frequency(S) {
+void Find_maximum_frequency(arm_rfft_fast_instance_f32 *S) {
     // === Find dominant frequency using CMSIS DSP: ============================
 
     float IN_Buffer[INPUT_SIZE] = {0};
@@ -138,7 +103,7 @@ void Find_maximum_frequency(S) {
     uint32_t cmsis_fft_start = DWT->CYCCNT;
 
     //Compute the RFFT of 'IN_buffer' , and store the result in 'FFT_Buffer'
-    arm_rfft_fast_f32(&S, IN_Buffer, FFT_Buffer, 0); //$ SOL
+    arm_rfft_fast_f32(S, IN_Buffer, FFT_Buffer, 0); //$ SOL
 
     // Save time when RFFT finished:
     uint32_t cmsis_fft_stop = DWT->CYCCNT;
@@ -173,25 +138,3 @@ void Find_maximum_frequency(S) {
 
 
 }
-
-
-
-//void dump_waveform(int32_t *buf, size_t len) {
-//  printf("\r\nWAVEFORM:");
-//  fflush(stdout);
-//  for (size_t i = 0; i < len; i++) {
-//    printf("%s%" PRIi32, i == 0 ? "" : ",", buf[i]);
-//    fflush(stdout);
-//  }
-//  printf("\r\n");
-//}
-//
-//void dump_fft_mag(float *buf, size_t len, uint32_t max_idx, uint32_t fs) {
-//  printf("\r\nFFTMAG:%" PRIu32 ",%" PRIu32, max_idx, fs);
-//  fflush(stdout);
-//  for (size_t i = 0; i < len; i++) {
-//    printf(",%f", buf[i]);
-//    fflush(stdout);
-//  }
-//  printf("\r\n");
-//}
