@@ -53,6 +53,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Libs/kissfft/src/kiss_fftnd.c
     Libs/kissfft/src/kiss_fftndr.c
     Libs/kissfft/src/kiss_fftr.c
+    Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal.c
+    Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_tim.c
+    Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_tim_ex.c
 
     # Add user sources here
 )
